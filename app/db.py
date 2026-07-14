@@ -8,16 +8,14 @@ All Postgres (Neon) wiring lives here:
     LangGraph's own checkpoint tables, which store raw graph state and aren't
     meant to be queried directly for "list my past trips"
 """
-import os
 from datetime import datetime, timezone
 
-from dotenv import load_dotenv
 from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
 
-load_dotenv()
+from app.config import get_secret
 
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = get_secret("DATABASE_URL")
 
 # Neon's free tier auto-suspends the database after inactivity (scale-to-zero)
 # and closes idle server-side connections. A plain pool then hands out dead

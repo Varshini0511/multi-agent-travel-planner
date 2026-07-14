@@ -47,7 +47,8 @@ scripts (`01_hello_graph.py`, `02_single_agent.py`).
    this repo.
 3. Create a new app pointing at `streamlit_app.py` on the `main` branch.
 4. In the app's **Settings -> Secrets**, paste your four secrets in TOML form
-   (see `.streamlit/secrets.toml.example`). Streamlit exposes them as
-   environment variables, which is how the app reads them.
+   (see `.streamlit/secrets.toml.example`). The app reads them via
+   `app/config.py`, which checks `os.environ` (local `.env`) first and falls
+   back to `st.secrets` (Streamlit Cloud).
 5. Deploy. The Neon database is reached over the internet, so no extra setup is
    needed there.

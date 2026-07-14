@@ -15,21 +15,19 @@ because the fallback has to be applied AFTER `.with_structured_output()` -
 combined fallback runnable, so we build the structured chain per-provider
 first and only then fall back between them.
 """
-import os
-
-from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 
-load_dotenv()
+from app.config import get_secret
 
 _groq = ChatGroq(
     model="llama-3.3-70b-versatile",
-    api_key=os.environ["GROQ_API_KEY"],
+    api_key=get_secret("GROQ_API_KEY"),
     temperature=0,
 )
 
 _gemini = None
-if os.environ.get("GOOGLE_API_KEY"):
+_google_key = get_secret("GOOGLE_API_KEY", required=False)
+if _google_key:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     # gemini-flash-lite-latest is what this project's free-tier key actually
@@ -37,7 +35,7 @@ if os.environ.get("GOOGLE_API_KEY"):
     # of 0 for this key, so they can't be used without billing.
     _gemini = ChatGoogleGenerativeAI(
         model="gemini-flash-lite-latest",
-        google_api_key=os.environ["GOOGLE_API_KEY"],
+        google_api_key=_google_key,
         temperature=0,
     )
 

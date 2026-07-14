@@ -19,19 +19,16 @@ a tool), we execute it in plain Python, and feed the result back in. This
 is the identical decide -> act -> observe loop as 02_single_agent.py's
 agent_brain/tool_node/route - just with a real model making the choice.
 """
-import os
 import re
 from typing import Literal
 
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from tavily import TavilyClient
 
+from app.config import get_secret
 from app.llm import structured
 
-load_dotenv()
-
-tavily = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+tavily = TavilyClient(api_key=get_secret("TAVILY_API_KEY"))
 
 MAX_RESULTS_PER_DOMAIN = 3
 MAX_CHARS_PER_RESULT = 600  # keeps LLM input (and Groq's free-tier token budget) small
