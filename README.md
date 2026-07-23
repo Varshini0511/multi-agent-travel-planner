@@ -17,12 +17,18 @@ loops back for revisions. State is persisted per trip in Postgres.
 - Context engineering (each agent sees only what it needs)
 - Input guardrails (prompt-injection defense) and graceful degradation
 - Multi-turn refinement against an existing trip
+- Human-in-the-loop: the graph pauses (`interrupt`) after the planner so you
+  can approve/edit the research plan before searches run
+- Long-term semantic memory across trips (pgvector + Gemini embeddings): the
+  planner recalls relevant preferences from past trips
+- Evaluation harness (`eval.py`): golden cases scored by deterministic checks
+  plus an LLM-as-judge rubric
 - Provider fallback: Groq primary, Google Gemini fallback
 
 ## Stack
 
-LangGraph · LangChain · Groq (Llama 3.3) + Google Gemini · Tavily search ·
-Neon Postgres · Streamlit
+LangGraph · LangChain · Groq (Llama 3.3) + Google Gemini (chat + embeddings) ·
+Tavily search · Neon Postgres (+ pgvector) · Streamlit
 
 ## Run locally
 

@@ -114,4 +114,4 @@ def input_guardrail(state: TripState) -> dict:
 
 
 def route_after_guardrail(state: TripState) -> str:
-    return "END" if state["rejected"] else "planner"
+    return "END" if state["rejected"] else "recall_memory"

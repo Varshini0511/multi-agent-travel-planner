@@ -6,6 +6,7 @@ from the mocked version; only what happens INSIDE each node changed.
 """
 from typing import Literal
 
+from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from app.llm import structured
@@ -14,6 +15,34 @@ from app.tools import TOOLS_BY_DOMAIN
 
 MAX_REVISIONS = 2
 Domain = Literal["flights", "hotels", "activities", "visa"]
+
+
+# ---------------------------------------------------------------------------
+# HUMAN-IN-THE-LOOP: sits between planner and the subagents. When auto_approve
+# is False, interrupt() PAUSES the whole graph here and hands the proposed
+# domains out to the caller; the run only continues when the caller resumes
+# with Command(resume=...). The pause survives via the checkpointer, so the
+# user can take as long as they like (or approve from a different session).
+# On a revision loop we don't re-prompt - the human already approved the plan.
+# ---------------------------------------------------------------------------
+def human_approval(state: TripState) -> dict:
+    if state.get("auto_approve", True) or state["revision_count"] > 0:
+        return {}
+
+    decision = interrupt({"proposed_domains": state["domains"]})
+
+    # decision is whatever the caller passed to Command(resume=...). Accept
+    # either a plain list of domains or {"domains": [...]}; fall back to the
+    # planner's proposal if the caller just said "go".
+    if isinstance(decision, dict):
+        approved = decision.get("domains") or state["domains"]
+    elif isinstance(decision, list):
+        approved = decision or state["domains"]
+    else:
+        approved = state["domains"]
+
+    print(f"[human_approval] approved domains={approved}")
+    return {"domains": approved}
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +100,14 @@ def planner(state: TripState) -> dict:
             f"Decide a revised list of research domains that will bring the cost down. "
             f"Keep 'flights' and 'hotels' - those are non-negotiable. Drop or keep 'activities' "
             f"and 'visa' based on what will help fit the budget."
+        )
+
+    # Long-term memory: fold any recalled preferences into the planner's context.
+    memory_context = state.get("memory_context", "")
+    if memory_context:
+        prompt += (
+            f"\n\nKnown preferences from this traveler's past trips:\n{memory_context}\n"
+            f"Take these into account when they're relevant."
         )
 
     try:
@@ -192,4 +229,6 @@ def critic(state: TripState) -> dict:
 
 
 def route_after_critic(state: TripState) -> str:
-    return "END" if state["approved"] else "planner"
+    # Approved trips pass through remember_memory (to store preferences) before
+    # ending; rejected ones loop back to the planner to revise.
+    return "remember" if state["approved"] else "planner"

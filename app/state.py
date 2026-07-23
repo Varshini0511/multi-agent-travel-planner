@@ -35,6 +35,15 @@ class TripState(TypedDict):
     # trip without starting a new thread_id.
     refinement_request: str
 
+    # -- human-in-the-loop: when False, the graph pauses (interrupt) after the
+    # planner so a human can approve/edit the domain list before subagents run.
+    # True (CLI, eval) skips the pause so those runs don't block.
+    auto_approve: bool
+
+    # -- long-term memory: preferences recalled from past trips, injected into
+    # the planner's context (populated by the recall_memory node).
+    memory_context: str
+
     # -- guardrail output --
     rejected: bool
     rejection_reason: str
@@ -67,15 +76,19 @@ class TripState(TypedDict):
     critic_feedback: str
 
 
-def default_trip_state(destination: str, budget_usd: int, nights: int) -> "TripState":
+def default_trip_state(destination: str, budget_usd: int, nights: int,
+                       auto_approve: bool = True) -> "TripState":
     """The one place every field TripState declares gets seeded - used by
     every entry point (main.py, streamlit_app.py) so adding a new field to
-    TripState only ever means updating it here, not hunting down every caller."""
+    TripState only ever means updating it here, not hunting down every caller.
+    auto_approve defaults True (CLI/eval never pause); Streamlit passes False."""
     return {
         "destination": destination,
         "budget_usd": budget_usd,
         "nights": nights,
         "refinement_request": "",
+        "auto_approve": auto_approve,
+        "memory_context": "",
         "rejected": False,
         "rejection_reason": "",
         "warnings": None,  # None => merge_warnings resets to [] (fresh trip)

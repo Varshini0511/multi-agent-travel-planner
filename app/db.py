@@ -58,6 +58,51 @@ def init_trips_table() -> None:
         """)
 
 
+# ---------------------------------------------------------------------------
+# Long-term semantic memory: preferences learned from past trips, stored as
+# embedding vectors so a NEW trip can recall relevant ones by meaning (not
+# keyword). Uses the pgvector extension; EMBEDDING_DIM must match the model
+# used in app/memory.py (Gemini text-embedding-004 = 768 dims).
+# ---------------------------------------------------------------------------
+EMBEDDING_DIM = 768
+
+
+def init_memory_table() -> None:
+    with _pool.connection() as conn:
+        conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS memories (
+                id BIGSERIAL PRIMARY KEY,
+                content TEXT NOT NULL,
+                embedding vector({EMBEDDING_DIM}) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+        """)
+
+
+def _vec_literal(embedding: list[float]) -> str:
+    # pgvector accepts a bracketed string like '[0.1,0.2,...]' cast to ::vector
+    return "[" + ",".join(str(x) for x in embedding) + "]"
+
+
+def save_memory(content: str, embedding: list[float]) -> None:
+    with _pool.connection() as conn:
+        conn.execute(
+            "INSERT INTO memories (content, embedding, created_at) VALUES (%s, %s::vector, %s)",
+            (content, _vec_literal(embedding), datetime.now(timezone.utc)),
+        )
+
+
+def search_memories(embedding: list[float], k: int = 3) -> list[str]:
+    with _pool.connection() as conn:
+        rows = conn.execute(
+            # <=> is pgvector's cosine-distance operator (smaller = more similar)
+            "SELECT content FROM memories ORDER BY embedding <=> %s::vector LIMIT %s",
+            (_vec_literal(embedding), k),
+        ).fetchall()
+        return [r[0] for r in rows]
+
+
 def save_trip(thread_id: str, state: dict) -> None:
     with _pool.connection() as conn:
         conn.execute(

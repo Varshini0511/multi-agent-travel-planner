@@ -10,6 +10,7 @@ Run: streamlit run streamlit_app.py
 import uuid
 
 import streamlit as st
+from langgraph.types import Command
 
 from app.db import get_trip, list_trips, save_trip
 from app.graph import build_graph
@@ -31,6 +32,8 @@ if "selected_thread_id" not in st.session_state:
     st.session_state.selected_thread_id = None
 if "last_run_state" not in st.session_state:
     st.session_state.last_run_state = None
+if "pending_approval" not in st.session_state:
+    st.session_state.pending_approval = None
 
 NODE_LABELS = {
     "guardrail": "Checking your request",
@@ -44,13 +47,22 @@ NODE_LABELS = {
 }
 
 
-def _stream_and_save(thread_id: str, input_state: dict, status_label: str) -> None:
+def _stream_and_save(thread_id: str, input_obj, status_label: str) -> None:
+    """Stream one run to completion, a rejection, OR a human-in-the-loop pause.
+    input_obj is either a full/partial state dict or a Command(resume=...).
+    On an interrupt, stashes pending_approval and returns without saving; the
+    main area then renders the approval UI, and _resume_after_approval()
+    continues the same thread."""
     config = {"configurable": {"thread_id": thread_id}}
-    steps_log = []
+    steps_log = st.session_state.get("last_run_trace") or []
     rejected_reason = None
+    interrupt_payload = None
 
     with st.status(status_label, expanded=True) as status:
-        for step in graph.stream(input_state, config=config, stream_mode="updates"):
+        for step in graph.stream(input_obj, config=config, stream_mode="updates"):
+            if "__interrupt__" in step:
+                interrupt_payload = step["__interrupt__"][0].value
+                break
             for node_name, update in step.items():
                 steps_log.append((node_name, update))
                 status.write(NODE_LABELS.get(node_name, node_name))
@@ -61,19 +73,30 @@ def _stream_and_save(thread_id: str, input_state: dict, status_label: str) -> No
 
         if rejected_reason:
             status.update(label="Request rejected", state="error")
+        elif interrupt_payload:
+            status.update(label="Waiting for your approval", state="running")
         else:
             status.update(label="Trip planned", state="complete")
 
+    st.session_state.last_run_trace = steps_log
+
     if rejected_reason:
+        st.session_state.pending_approval = None
         st.error(f"Your request couldn't be planned: {rejected_reason}")
         return
 
+    if interrupt_payload:
+        st.session_state.pending_approval = {
+            "thread_id": thread_id,
+            "proposed_domains": interrupt_payload.get("proposed_domains", []),
+        }
+        return
+
+    st.session_state.pending_approval = None
     final_state = graph.get_state(config).values
     save_trip(thread_id, final_state)
-
     st.session_state.selected_thread_id = thread_id
     st.session_state.last_run_state = final_state
-    st.session_state.last_run_trace = steps_log
 
 
 def run_new_trip(destination: str, budget_usd: int, nights: int) -> None:
@@ -81,13 +104,21 @@ def run_new_trip(destination: str, budget_usd: int, nights: int) -> None:
     st.session_state.selected_thread_id = None
     st.session_state.last_run_state = None
     st.session_state.last_run_trace = None
-    _stream_and_save(thread_id, default_trip_state(destination, budget_usd, nights),
+    st.session_state.pending_approval = None
+    # auto_approve=False so the graph pauses after the planner for sign-off.
+    _stream_and_save(thread_id, default_trip_state(destination, budget_usd, nights, auto_approve=False),
                       f"Planning your trip to {destination}...")
+
+
+def _resume_after_approval(thread_id: str, approved_domains: list[str]) -> None:
+    _stream_and_save(thread_id, Command(resume={"domains": approved_domains}),
+                      "Finishing your trip...")
 
 
 def refine_trip(thread_id: str, message: str) -> None:
     # Multi-turn: SAME thread_id, partial update only - destination/budget/
     # nights/etc are restored from the checkpoint, not re-sent here.
+    st.session_state.pending_approval = None
     _stream_and_save(thread_id, refinement_update(message), "Updating your trip...")
 
 
@@ -148,9 +179,31 @@ with st.sidebar:
             st.session_state.selected_thread_id = trip["thread_id"]
             st.session_state.last_run_state = None
             st.session_state.last_run_trace = None
+            st.session_state.pending_approval = None
             st.rerun()
 
-if st.session_state.selected_thread_id is None:
+pending = st.session_state.get("pending_approval")
+
+if pending:
+    st.title("🧭 Multi-Agent Travel Planner")
+    st.subheader("Approve the research plan")
+    st.write(
+        "The planner proposes researching these areas. Adjust the selection if "
+        "you like, then approve to run the searches."
+    )
+    ALL = ["flights", "hotels", "activities", "visa"]
+    chosen = st.multiselect(
+        "Research areas", options=ALL,
+        default=pending["proposed_domains"],
+    )
+    col_a, _ = st.columns([1, 3])
+    if col_a.button("Approve & run", type="primary"):
+        if not chosen:
+            st.error("Pick at least one area.")
+        else:
+            _resume_after_approval(pending["thread_id"], chosen)
+            st.rerun()
+elif st.session_state.selected_thread_id is None:
     st.title("🧭 Multi-Agent Travel Planner")
     st.write("Plan a trip using the form in the sidebar, or open a past trip from your history.")
 else:
