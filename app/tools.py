@@ -32,7 +32,11 @@ tavily = TavilyClient(api_key=get_secret("TAVILY_API_KEY"))
 
 MAX_RESULTS_PER_DOMAIN = 3
 MAX_CHARS_PER_RESULT = 600  # keeps LLM input (and Groq's free-tier token budget) small
-MAX_TOOL_STEPS = 3          # caps how many actions one domain's agent can take
+MAX_TOOL_STEPS = 1          # lowered from 3: on free tiers, 3-4 subagents each
+                            # doing a multi-step loop in parallel bursts past the
+                            # per-minute rate limit and triggers fallback estimates.
+                            # 1 keeps dynamic tool selection (the LLM still chooses
+                            # the action) while shrinking the concurrent-call burst.
 
 
 # ---------------------------------------------------------------------------
