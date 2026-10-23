@@ -12,6 +12,7 @@ separate - then we inspect a saved thread's history to show persistence.
 from app.db import save_trip
 from app.graph import build_graph
 from app.state import default_trip_state, refinement_update
+from app.trace import RunTracer
 
 graph = build_graph()
 
@@ -30,9 +31,11 @@ def _print_result(thread_id: str, result: dict):
 
 def run_trip(thread_id: str, destination: str, budget_usd: int, nights: int):
     print(f"\n===== thread '{thread_id}': {destination}, ${budget_usd}, {nights} nights =====")
-    config = {"configurable": {"thread_id": thread_id}}
+    tracer = RunTracer()
+    config = {"configurable": {"thread_id": thread_id}, "callbacks": [tracer]}
     result = graph.invoke(default_trip_state(destination, budget_usd, nights), config=config)
     _print_result(thread_id, result)
+    print("trace:", tracer.summary())
     return config
 
 

@@ -47,6 +47,7 @@ Defined in `app/graph.py`. Nodes are in `app/nodes.py`, `app/guardrail.py`,
 | `app/llm.py` | `structured(schema)` — Groq primary + Gemini fallback, structured output. |
 | `app/db.py` | Neon Postgres: pool, PostgresSaver checkpointer, `trips` table, pgvector `memories`. |
 | `app/config.py` | `get_secret()` — `.env` (os.environ) then `st.secrets`. |
+| `app/trace.py` | `RunTracer` callback — token/latency/cost per run, attached via `config["callbacks"]`. |
 
 ## Concepts implemented (all done)
 
@@ -54,11 +55,12 @@ state/nodes/edges · conditional routing · parallel fan-out/fan-in · task
 decomposition · role-based agents · context engineering · dynamic tool selection
 · reflection loop · persistence (checkpointer + thread_id) · input guardrails ·
 graceful degradation · multi-turn refinement · human-in-the-loop (interrupt) ·
-long-term semantic memory (pgvector) · evaluation · provider fallback.
+long-term semantic memory (pgvector) · evaluation · provider fallback ·
+observability + token/cost tracking (`app/trace.py` callback).
 
-Not built (possible next steps): observability/tracing, agent-to-agent handoffs,
-subgraphs, `Send`-based dynamic map-reduce, per-user memory scoping, token/cost
-tracking.
+Deliberately NOT built (would be contrived for a single-user learning app, not
+gaps to "fix"): agent-to-agent handoffs, subgraphs, `Send`-based dynamic
+map-reduce, per-user memory scoping.
 
 ## Conventions (follow these when changing code)
 

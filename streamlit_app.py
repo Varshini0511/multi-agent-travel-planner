@@ -15,6 +15,7 @@ from langgraph.types import Command
 from app.db import get_trip, list_trips, save_trip
 from app.graph import build_graph
 from app.state import default_trip_state, refinement_update
+from app.trace import RunTracer
 
 st.set_page_config(page_title="Multi-Agent Travel Planner", page_icon="🧭", layout="wide")
 
@@ -53,7 +54,8 @@ def _stream_and_save(thread_id: str, input_obj, status_label: str) -> None:
     On an interrupt, stashes pending_approval and returns without saving; the
     main area then renders the approval UI, and _resume_after_approval()
     continues the same thread."""
-    config = {"configurable": {"thread_id": thread_id}}
+    tracer = RunTracer()
+    config = {"configurable": {"thread_id": thread_id}, "callbacks": [tracer]}
     steps_log = st.session_state.get("last_run_trace") or []
     rejected_reason = None
     interrupt_payload = None
@@ -79,6 +81,7 @@ def _stream_and_save(thread_id: str, input_obj, status_label: str) -> None:
             status.update(label="Trip planned", state="complete")
 
     st.session_state.last_run_trace = steps_log
+    st.session_state.last_run_diagnostics = tracer.summary()
 
     if rejected_reason:
         st.session_state.pending_approval = None
@@ -104,6 +107,7 @@ def run_new_trip(destination: str, budget_usd: int, nights: int) -> None:
     st.session_state.selected_thread_id = None
     st.session_state.last_run_state = None
     st.session_state.last_run_trace = None
+    st.session_state.last_run_diagnostics = None
     st.session_state.pending_approval = None
     # auto_approve=False so the graph pauses after the planner for sign-off.
     _stream_and_save(thread_id, default_trip_state(destination, budget_usd, nights, auto_approve=False),
@@ -179,6 +183,7 @@ with st.sidebar:
             st.session_state.selected_thread_id = trip["thread_id"]
             st.session_state.last_run_state = None
             st.session_state.last_run_trace = None
+            st.session_state.last_run_diagnostics = None
             st.session_state.pending_approval = None
             st.rerun()
 
@@ -239,6 +244,20 @@ else:
             else:
                 refine_trip(st.session_state.selected_thread_id, refinement_message.strip())
                 st.rerun()
+
+        diag = st.session_state.get("last_run_diagnostics")
+        if diag:
+            st.divider()
+            st.markdown("**Run diagnostics**")
+            d1, d2, d3 = st.columns(3)
+            d1.metric("LLM calls", diag["llm_calls"])
+            d2.metric("Tokens used", f"{diag['total_tokens']:,}")
+            d3.metric("LLM time", f"{diag['total_latency_ms'] / 1000:.1f}s")
+            if diag["by_model"]:
+                st.caption("By model: " + " · ".join(
+                    f"{m} ({v['calls']} calls, {v['tokens']:,} tok)"
+                    for m, v in diag["by_model"].items()
+                ))
 
         if st.session_state.get("last_run_trace"):
             with st.expander("Agent trace (technical)"):

@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from app.graph import build_graph
 from app.llm import structured
 from app.state import default_trip_state
+from app.trace import RunTracer
 
 VISA_DESTINATIONS = {"Hanoi", "Cairo", "New Delhi"}  # for the deterministic visa check
 
@@ -80,10 +81,11 @@ def run_eval():
     graph = build_graph()
     total_checks = passed_checks = 0
     scores = []
+    tracer = RunTracer()
 
     for i, case in enumerate(GOLDEN_CASES):
         print(f"\n=== [{case['name']}] {case['destination']} · ${case['budget']} · {case['nights']}n ===")
-        cfg = {"configurable": {"thread_id": f"eval-{case['name']}"}}
+        cfg = {"configurable": {"thread_id": f"eval-{case['name']}"}, "callbacks": [tracer]}
         try:
             state = graph.invoke(
                 default_trip_state(case["destination"], case["budget"], case["nights"], auto_approve=True),
@@ -105,10 +107,13 @@ def run_eval():
             scores.append(q.score)
             print(f"  quality: {q.score}/5 — {q.reason}")
 
+    s = tracer.summary()
     print("\n" + "=" * 50)
     print(f"Deterministic: {passed_checks}/{total_checks} checks passed")
     if scores:
         print(f"LLM quality:   avg {sum(scores)/len(scores):.1f}/5 over {len(scores)} itinerary(ies)")
+    print(f"Observability: {s['llm_calls']} LLM calls, {s['total_tokens']:,} tokens, "
+          f"{s['total_latency_ms']/1000:.1f}s in-model")
     print("=" * 50)
 
 

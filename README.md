@@ -71,6 +71,8 @@ multi-agent-travel-planner/
 - Long-term semantic memory across trips (pgvector + Gemini embeddings)
 - Evaluation harness: golden cases scored by deterministic checks + an
   LLM-as-judge rubric
+- Observability: a callback (`app/trace.py`) records LLM calls, tokens, latency
+  and cost per run — shown in the UI's "Run diagnostics" and printed by the CLI
 - Provider fallback: Groq primary, Google Gemini fallback
 
 ## Stack
